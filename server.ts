@@ -128,12 +128,13 @@ const rateLimitMiddleware = (req: express.Request, res: express.Response, next: 
   next();
 };
 
-app.use('/api/', rateLimitMiddleware);
+const apiRouter = express.Router();
+apiRouter.use(rateLimitMiddleware);
 
 // --- API ROUTES ---
 
 // 1. Health Probe
-app.get('/api/health', (req, res) => {
+apiRouter.get('/health', (req, res) => {
   res.json({
     status: 'ONLINE',
     uptime: process.uptime(),
@@ -145,7 +146,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // 2. Real-time active download status query
-app.get('/api/status', (req, res) => {
+apiRouter.get('/status', (req, res) => {
   res.json({
     activeQueues: 0,
     serverStatus: "COMPLIANT_ACTIVE",
@@ -155,13 +156,13 @@ app.get('/api/status', (req, res) => {
 });
 
 // 3. Stats Dashboard data fetch
-app.get('/api/stats', (req, res) => {
+apiRouter.get('/stats', (req, res) => {
   const analyticsData = db.analytics.getStats();
   res.json(analyticsData);
 });
 
 // 4. History Listing & Search
-app.get('/api/history', (req, res) => {
+apiRouter.get('/history', (req, res) => {
   const { query, platform } = req.query;
   const items = db.history.findMany({ 
     query: query as string, 
@@ -171,14 +172,14 @@ app.get('/api/history', (req, res) => {
 });
 
 // 5. Search endpoint specifically
-app.get('/api/search', (req, res) => {
+apiRouter.get('/search', (req, res) => {
   const { q } = req.query;
   const items = db.history.findMany({ query: q as string });
   res.json(items);
 });
 
 // 6. Delete a record from database
-app.post('/api/delete', (req, res) => {
+apiRouter.post('/delete', (req, res) => {
   const { id } = req.body;
   if (!id) {
     return res.status(400).json({ error: "Missing identifier ID" });
@@ -193,7 +194,7 @@ app.post('/api/delete', (req, res) => {
 });
 
 // 7. Simulated/Mock Supabase Storage File uploader mimicking direct file save
-app.post('/api/upload', (req, res) => {
+apiRouter.post('/upload', (req, res) => {
   // Simulates Supabase uploading a video node, returns CDN path
   const randomId = Math.random().toString(36).substring(7);
   const virtualCdnUrl = `https://supabase-storage-cdn.ultrapro.io/downloads/cyber_stream_${randomId}.mp4`;
@@ -205,7 +206,7 @@ app.post('/api/upload', (req, res) => {
 });
 
 // 8. Terminal Streaming Logs Endpoint
-app.get('/api/terminal-logs', (req, res) => {
+apiRouter.get('/terminal-logs', (req, res) => {
   const activeLogs = db.logs.findMany();
   res.json({
     logs: activeLogs.map(l => `[${l.timestamp.replace('T', ' ').substring(11, 19)}] [${l.level.toUpperCase()}] ${l.message}`),
@@ -214,11 +215,11 @@ app.get('/api/terminal-logs', (req, res) => {
 });
 
 // 9. API Keys endpoint
-app.get('/api/api-keys', (req, res) => {
+apiRouter.get('/api-keys', (req, res) => {
   res.json(db.apiKeys.findMany());
 });
 
-app.post('/api/api-keys', (req, res) => {
+apiRouter.post('/api-keys', (req, res) => {
   const { name, limit } = req.body;
   if (!name) return res.status(400).json({ error: "Missing key identifier" });
   const newKey = db.apiKeys.create(name, limit);
@@ -226,7 +227,7 @@ app.post('/api/api-keys', (req, res) => {
   res.json(newKey);
 });
 
-app.post('/api/api-keys/revoke', (req, res) => {
+apiRouter.post('/api-keys/revoke', (req, res) => {
   const { id } = req.body;
   const key = db.apiKeys.revoke(id);
   if (key) {
@@ -238,12 +239,12 @@ app.post('/api/api-keys/revoke', (req, res) => {
 });
 
 // 10. Users list
-app.get('/api/users', (req, res) => {
+apiRouter.get('/users', (req, res) => {
   res.json(db.users.findMany());
 });
 
 // 11. DNS resolution endpoint
-app.post('/api/dns-resolve', (req, res) => {
+apiRouter.post('/dns-resolve', (req, res) => {
   const { hostname } = req.body;
   if (!hostname) {
     return res.status(400).json({ error: 'Missing hostname parameter.' });
@@ -291,7 +292,7 @@ app.post('/api/dns-resolve', (req, res) => {
 });
 
 // 12. Geolocation / ISP IP Lookup Proxy
-app.post('/api/ip-lookup', async (req, res) => {
+apiRouter.post('/ip-lookup', async (req, res) => {
   const { ip } = req.body;
   if (!ip) {
     return res.status(400).json({ error: 'Missing IP address parameter.' });
@@ -347,7 +348,7 @@ app.post('/api/ip-lookup', async (req, res) => {
 });
 
 // 13. Auxiliary Phone Signature Lookup
-app.post('/api/phone-lookup', (req, res) => {
+apiRouter.post('/phone-lookup', (req, res) => {
   const { rawNumber, defaultRegion } = req.body;
   if (!rawNumber) return res.status(400).json({ error: 'Missing phone argument.' });
 
@@ -567,12 +568,12 @@ const downloadHandler = async (req: express.Request, res: express.Response) => {
   });
 };
 
-app.post(['/api/download', '/api/extract', '/api/cobalt', '/api/media'], downloadHandler);
-app.get(['/api/download', '/api/extract', '/api/cobalt', '/api/media'], downloadHandler);
+apiRouter.post(['/download', '/extract', '/cobalt', '/media'], downloadHandler);
+apiRouter.get(['/download', '/extract', '/cobalt', '/media'], downloadHandler);
 
 // 15. Server-side Proxy download stream generator (CRITICAL FEATURE FOR REAL PHYSICAL DOWNLOADING)
 // This endpoint receives a direct stream URL and streams it as a binary file to the browser
-app.get('/api/proxy-download', async (req, res) => {
+apiRouter.get('/proxy-download', async (req, res) => {
   const targetMediaUrl = req.query.url as string;
   const rawTitle = req.query.title as string || 'cyber_stream_download';
   
@@ -647,6 +648,9 @@ app.get('/api/proxy-download', async (req, res) => {
     res.redirect(targetMediaUrl);
   }
 });
+
+app.use('/api', apiRouter);
+app.use('/', apiRouter);
 
 // --- VITE MIDDLEWARE OR STATIC APP SERVING ---
 
