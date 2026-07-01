@@ -1425,7 +1425,7 @@ export default function App() {
                                     Preview
                                   </button>
                                   <a
-                                    href={item.result.downloadUrl}
+                                    href={`/api/proxy-download?url=${encodeURIComponent(item.result.downloadUrl)}&title=${encodeURIComponent(item.result.title)}`}
                                     target="_blank"
                                     rel="noreferrer referrer"
                                     className="px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-[#00ffcc] hover:bg-emerald-500/20 transition-all cursor-pointer block"
