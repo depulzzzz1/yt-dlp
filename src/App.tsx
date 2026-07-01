@@ -38,6 +38,8 @@ import { MediaPipelineResult } from './components/MediaPipelineResult';
 import { HistorySection } from './components/HistorySection';
 import { VideoPlayerModal } from './components/VideoPlayerModal';
 import { AdminPanel } from './components/AdminPanel';
+import { UserProfileModal } from './components/UserProfileModal';
+import { MediaOperationsModal } from './components/MediaOperationsModal';
 
 export interface BulkQueueItem {
   id: string;
@@ -100,6 +102,14 @@ export default function App() {
   const [history, setHistory] = useState<DownloadItem[]>([]);
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
   const [activePreviewItem, setActivePreviewItem] = useState<DownloadItem | null>(null);
+
+  // New modal states
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isOpsOpen, setIsOpsOpen] = useState(false);
+  const [selectedOpsItem, setSelectedOpsItem] = useState<DownloadItem | null>(null);
+
+  // Accent theme colors
+  const [accentColor, setAccentColor] = useState<'blue' | 'purple' | 'orange' | 'green'>('blue');
 
   // Network Tools inputs & results
   const [ipInput, setIpInput] = useState('');
@@ -190,6 +200,13 @@ export default function App() {
     const url = downloadUrl.trim();
     if (!url) {
       addToast('Please enter a valid media stream link first.', 'error');
+      return;
+    }
+
+    // Validate URL format before processing
+    const urlPattern = /^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/i;
+    if (!urlPattern.test(url)) {
+      addToast('Invalid URL format. Please enter a valid HTTP or HTTPS media link.', 'error');
       return;
     }
 
@@ -717,16 +734,89 @@ export default function App() {
     setHistory(prev => prev.map(item => item.id === id ? { ...item, title: newTitle } : item));
   };
 
+  const accentClasses = {
+    blue: {
+      text: 'text-[#00d2ff]',
+      textMuted: 'text-cyan-400',
+      bg: 'bg-cyan-500',
+      border: 'border-cyan-500/30',
+      borderFocus: 'focus:border-cyan-500/50',
+      bgMuted: 'bg-[#0c1328]',
+      shadow: 'shadow-cyan-500/5',
+      shadowGlow: 'shadow-cyan-500/10',
+      gradient: 'from-cyan-500 to-blue-500',
+      gradientTr: 'from-cyan-500 to-blue-600',
+      hoverBg: 'hover:bg-[#00ffcc] hover:text-black',
+      accentBg: 'bg-cyan-500/10',
+      accentBorder: 'border-cyan-500/30',
+      accentText: 'text-[#00ffcc]',
+      bgGradient: 'from-blue-900/10 via-cyan-950/5',
+    },
+    purple: {
+      text: 'text-[#d946ef]',
+      textMuted: 'text-fuchsia-400',
+      bg: 'bg-fuchsia-500',
+      border: 'border-fuchsia-500/30',
+      borderFocus: 'focus:border-fuchsia-500/50',
+      bgMuted: 'bg-[#1e0e29]',
+      shadow: 'shadow-fuchsia-500/5',
+      shadowGlow: 'shadow-fuchsia-500/10',
+      gradient: 'from-fuchsia-500 to-purple-500',
+      gradientTr: 'from-fuchsia-500 to-purple-600',
+      hoverBg: 'hover:bg-[#f472b6] hover:text-black',
+      accentBg: 'bg-fuchsia-500/10',
+      accentBorder: 'border-fuchsia-500/30',
+      accentText: 'text-[#f5d0fe]',
+      bgGradient: 'from-purple-900/10 via-fuchsia-950/5',
+    },
+    orange: {
+      text: 'text-[#f97316]',
+      textMuted: 'text-orange-400',
+      bg: 'bg-orange-500',
+      border: 'border-orange-500/30',
+      borderFocus: 'focus:border-orange-500/50',
+      bgMuted: 'bg-[#1c0d06]',
+      shadow: 'shadow-orange-500/5',
+      shadowGlow: 'shadow-orange-500/10',
+      gradient: 'from-orange-500 to-red-500',
+      gradientTr: 'from-orange-500 to-red-600',
+      hoverBg: 'hover:bg-[#fb923c] hover:text-black',
+      accentBg: 'bg-orange-500/10',
+      accentBorder: 'border-orange-500/30',
+      accentText: 'text-[#ffedd5]',
+      bgGradient: 'from-orange-900/10 via-amber-950/5',
+    },
+    green: {
+      text: 'text-[#22c55e]',
+      textMuted: 'text-emerald-400',
+      bg: 'bg-emerald-500',
+      border: 'border-emerald-500/30',
+      borderFocus: 'focus:border-emerald-500/50',
+      bgMuted: 'bg-[#051a10]',
+      shadow: 'shadow-emerald-500/5',
+      shadowGlow: 'shadow-emerald-500/10',
+      gradient: 'from-emerald-500 to-teal-500',
+      gradientTr: 'from-emerald-500 to-teal-600',
+      hoverBg: 'hover:bg-[#4ade80] hover:text-black',
+      accentBg: 'bg-emerald-500/10',
+      accentBorder: 'border-emerald-500/30',
+      accentText: 'text-[#4ade80]',
+      bgGradient: 'from-emerald-900/10 via-teal-950/5',
+    }
+  };
+
+  const curr = accentClasses[accentColor];
+
   return (
     <div className="min-h-screen bg-[#04050a] text-slate-100 flex flex-col font-sans selection:bg-[#00ffcc] selection:text-black antialiased relative overflow-x-hidden">
       
       {/* Absolute top glowing ambient header element */}
-      <div className="absolute top-0 inset-x-0 h-[550px] bg-gradient-to-b from-blue-900/10 via-cyan-950/5 to-transparent blur-3xl pointer-events-none" />
+      <div className={`absolute top-0 inset-x-0 h-[550px] bg-gradient-to-b ${curr.bgGradient} to-transparent blur-3xl pointer-events-none`} />
 
       {/* Primary Top Header bar */}
       <header className="sticky top-0 z-40 w-full bg-[#04050a]/80 backdrop-blur-xl border-b border-slate-900/90 py-4 px-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-black shadow-lg shadow-cyan-500/10 shrink-0">
+          <div className={`p-2 rounded-xl bg-gradient-to-tr ${curr.gradientTr} text-black shadow-lg ${curr.shadowGlow} shrink-0`}>
             <Download className="w-5 h-5 text-black" />
           </div>
           <div>
@@ -734,7 +824,7 @@ export default function App() {
               <h1 className="text-sm font-bold tracking-tight text-white font-mono uppercase">
                 UltraProMax Downloader
               </h1>
-              <span className="text-[9px] bg-cyan-500/10 border border-cyan-500/30 text-[#00ffcc] font-mono px-2 py-0.5 rounded-full uppercase">
+              <span className={`text-[9px] ${curr.accentBg} border ${curr.border} ${curr.text} font-mono px-2 py-0.5 rounded-full uppercase`}>
                 Full-Stack
               </span>
             </div>
@@ -744,17 +834,50 @@ export default function App() {
           </div>
         </div>
 
-        {/* Top-Right Telemetry Network status indicator */}
-        <div className="hidden md:flex items-center gap-4 text-[10px] font-mono">
-          <div className="flex items-center gap-1.5 text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
-            <Cpu className="w-3.5 h-3.5 text-[#00d2ff]" />
+        {/* Top-Right Telemetry Network status indicator with Accent Theme swapper */}
+        <div className="flex items-center gap-3 text-[10px] font-mono">
+          {/* Accent theme controller */}
+          <div className="flex items-center gap-2 bg-slate-900 border border-slate-800/80 px-2.5 py-1.5 rounded-xl">
+            <span className="text-[9px] uppercase text-slate-400 font-bold tracking-wider">Accent:</span>
+            <div className="flex gap-1.5">
+              {(['blue', 'purple', 'orange', 'green'] as const).map((color) => {
+                const colorBg = color === 'blue' ? 'bg-[#00d2ff]' : color === 'purple' ? 'bg-[#d946ef]' : color === 'orange' ? 'bg-[#f97316]' : 'bg-[#22c55e]';
+                const isActive = accentColor === color;
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => {
+                      setAccentColor(color);
+                      addToast(`Theme accent changed to Neon ${color.charAt(0).toUpperCase() + color.slice(1)}`, 'success');
+                    }}
+                    className={`w-3.5 h-3.5 rounded-full ${colorBg} border transition-all hover:scale-125 active:scale-90 cursor-pointer ${
+                      isActive ? 'border-white scale-110 shadow-lg ring-1 ring-white/30' : 'border-transparent opacity-60 hover:opacity-100'
+                    }`}
+                    title={`Neon ${color}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="hidden md:flex items-center gap-1.5 text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
+            <Cpu className={`w-3.5 h-3.5 ${curr.text}`} />
             <span>Proxy Nodes: <strong>Active</strong></span>
           </div>
 
-          <div className="flex items-center gap-1.5 text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
+          <div className="hidden md:flex items-center gap-1.5 text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>Connection: <strong>SECURE</strong></span>
           </div>
+
+          <button
+            onClick={() => setIsProfileOpen(true)}
+            className={`flex items-center gap-2 bg-slate-900 border border-slate-800 hover:border-slate-750 px-3 py-1.5 rounded-xl text-slate-200 hover:text-white cursor-pointer transition-all font-mono`}
+          >
+            <User className={`w-3.5 h-3.5 ${curr.text}`} />
+            <span>Account Console</span>
+          </button>
         </div>
       </header>
 
@@ -767,7 +890,7 @@ export default function App() {
             onClick={() => setActiveTab('downloader')}
             className={`flex-1 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider py-3 px-4 rounded-xl transition-all cursor-pointer ${
               activeTab === 'downloader'
-                ? 'bg-[#0c1328] border border-cyan-500/30 text-[#00d2ff] shadow-md shadow-cyan-500/5'
+                ? `${curr.bgMuted} border ${curr.border} ${curr.text} shadow-md ${curr.shadow}`
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -782,7 +905,7 @@ export default function App() {
             }}
             className={`flex-1 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider py-3 px-4 rounded-xl transition-all cursor-pointer ${
               activeTab === 'analytics'
-                ? 'bg-[#0c1328] border border-cyan-500/30 text-[#00d2ff] shadow-md shadow-cyan-500/5'
+                ? `${curr.bgMuted} border ${curr.border} ${curr.text} shadow-md ${curr.shadow}`
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -794,7 +917,7 @@ export default function App() {
             onClick={() => setActiveTab('network')}
             className={`flex-1 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider py-3 px-4 rounded-xl transition-all cursor-pointer ${
               activeTab === 'network'
-                ? 'bg-[#0c1328] border border-cyan-500/30 text-[#00d2ff] shadow-md shadow-cyan-500/5'
+                ? `${curr.bgMuted} border ${curr.border} ${curr.text} shadow-md ${curr.shadow}`
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -809,7 +932,7 @@ export default function App() {
             }}
             className={`flex-1 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider py-3 px-4 rounded-xl transition-all cursor-pointer ${
               activeTab === 'history'
-                ? 'bg-[#0c1328] border border-cyan-500/30 text-[#00d2ff] shadow-md shadow-cyan-500/5'
+                ? `${curr.bgMuted} border ${curr.border} ${curr.text} shadow-md ${curr.shadow}`
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -821,7 +944,7 @@ export default function App() {
             onClick={() => setActiveTab('admin')}
             className={`flex-1 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider py-3 px-4 rounded-xl transition-all cursor-pointer ${
               activeTab === 'admin'
-                ? 'bg-[#0c1328] border border-cyan-500/30 text-[#00d2ff] shadow-md shadow-cyan-500/5'
+                ? `${curr.bgMuted} border ${curr.border} ${curr.text} shadow-md ${curr.shadow}`
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -840,12 +963,12 @@ export default function App() {
               {/* Media input and configuration panel */}
               <div className="bg-[#060814]/40 border border-slate-800/80 backdrop-blur-2xl rounded-2xl p-5 md:p-6 shadow-2xl relative">
                 {/* Neon vertical line accent */}
-                <div className="absolute top-0 left-0 bottom-0 w-[2px] bg-gradient-to-b from-cyan-500 to-blue-500" />
+                <div className={`absolute top-0 left-0 bottom-0 w-[2px] bg-gradient-to-b ${curr.gradient}`} />
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-3 border-b border-slate-900/40">
                   <div>
                     <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
+                      <Sparkles className={`w-4 h-4 ${curr.textMuted} animate-pulse`} />
                       Secure Universal Downloader
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
@@ -860,7 +983,7 @@ export default function App() {
                       onClick={() => setDownloaderMode('single')}
                       className={`text-[10px] font-mono font-bold uppercase tracking-wider px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
                         downloaderMode === 'single'
-                          ? 'bg-[#0c1328] border border-cyan-500/30 text-[#00d2ff]'
+                          ? `${curr.bgMuted} border ${curr.border} ${curr.text}`
                           : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
@@ -871,7 +994,7 @@ export default function App() {
                       onClick={() => setDownloaderMode('bulk')}
                       className={`text-[10px] font-mono font-bold uppercase tracking-wider px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
                         downloaderMode === 'bulk'
-                          ? 'bg-[#0c1328] border border-cyan-500/30 text-[#00d2ff]'
+                          ? `${curr.bgMuted} border ${curr.border} ${curr.text}`
                           : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
@@ -894,12 +1017,12 @@ export default function App() {
                           value={downloadUrl}
                           onChange={(e) => handleUrlChange(e.target.value)}
                           placeholder="Paste TikTok, YouTube, Reels, Facebook, or Pinterest links here..."
-                          className="w-full bg-slate-900 border border-slate-850 hover:border-slate-800 focus:border-cyan-500/50 focus:outline-none rounded-xl py-4.5 pl-4.5 pr-28 text-xs text-slate-200 placeholder-slate-500 font-mono transition-all"
+                          className={`w-full bg-slate-900 border border-slate-850 hover:border-slate-800 ${curr.borderFocus} focus:outline-none rounded-xl py-4.5 pl-4.5 pr-28 text-xs text-slate-200 placeholder-slate-500 font-mono transition-all`}
                         />
                         <button
                           type="submit"
                           disabled={isDownloading}
-                          className="absolute right-2 px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-[#00ffcc] text-black font-bold text-xs uppercase tracking-wider transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                          className={`absolute right-2 px-5 py-2.5 rounded-lg ${curr.bg} ${curr.hoverBg} text-black font-bold text-xs uppercase tracking-wider transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50`}
                         >
                           {isDownloading ? 'Active' : 'Pipeline Link'}
                         </button>
@@ -1072,21 +1195,21 @@ export default function App() {
 
               {/* Single Mode Real-time downloading progress status visualizer */}
               {downloaderMode === 'single' && isDownloading && (
-                <div className="w-full bg-[#060814]/70 border border-cyan-500/20 rounded-2xl p-5 backdrop-blur-xl relative overflow-hidden animate-fade-in">
-                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 to-transparent pointer-events-none" />
+                <div className={`w-full bg-[#060814]/70 border ${curr.borderMuted} rounded-2xl p-5 backdrop-blur-xl relative overflow-hidden animate-fade-in`}>
+                  <div className={`absolute inset-0 bg-gradient-to-r ${curr.accentBg} to-transparent pointer-events-none`} />
                   
                   <div className="flex items-center justify-between mb-3 text-xs">
-                    <span className="font-mono font-semibold text-[#00ffcc] uppercase tracking-wide flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-[#00ffcc] animate-ping" />
+                    <span className={`font-mono font-semibold ${curr.accentText} uppercase tracking-wide flex items-center gap-2`}>
+                      <span className={`w-2 h-2 rounded-full ${curr.bg} animate-ping`} />
                       {currentStageText}
                     </span>
-                    <span className="font-mono text-cyan-400 font-bold">{downloadProgress}%</span>
+                    <span className={`font-mono ${curr.textMuted} font-bold`}>{downloadProgress}%</span>
                   </div>
 
                   {/* Real progress bar */}
                   <div className="w-full h-3 bg-slate-900 border border-slate-850 p-0.5 rounded-full overflow-hidden mb-3">
                     <div 
-                      className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-emerald-400 shadow-[0_0_12px_rgba(0,210,255,0.7)] transition-all duration-300"
+                      className={`h-full rounded-full bg-gradient-to-r ${curr.gradient} to-emerald-400 shadow-[0_0_12px_rgba(var(--accent-primary-rgb),0.5)] transition-all duration-300`}
                       style={{ width: `${downloadProgress}%` }}
                     />
                   </div>
@@ -1377,11 +1500,11 @@ export default function App() {
                   onClick={() => setNetworkSubTab('ip')}
                   className={`flex-1 lg:flex-initial text-left text-xs uppercase tracking-wider font-semibold py-3 px-4 rounded-xl border transition-all flex items-center gap-3 cursor-pointer ${
                     networkSubTab === 'ip'
-                      ? 'bg-cyan-500/10 border-cyan-500 text-[#00d2ff] shadow-md'
+                      ? `${curr.accentBg} ${curr.accentBorder} ${curr.text} shadow-md`
                       : 'bg-[#060814]/30 border-slate-850 text-slate-400 hover:text-white hover:border-slate-800'
                   }`}
                 >
-                  <MapPin className="w-4 h-4 text-cyan-400" />
+                  <MapPin className={`w-4 h-4 ${curr.text}`} />
                   IP Lookup Node
                 </button>
 
@@ -1389,11 +1512,11 @@ export default function App() {
                   onClick={() => setNetworkSubTab('phone')}
                   className={`flex-1 lg:flex-initial text-left text-xs uppercase tracking-wider font-semibold py-3 px-4 rounded-xl border transition-all flex items-center gap-3 cursor-pointer ${
                     networkSubTab === 'phone'
-                      ? 'bg-cyan-500/10 border-cyan-500 text-[#00d2ff] shadow-md'
+                      ? `${curr.accentBg} ${curr.accentBorder} ${curr.text} shadow-md`
                       : 'bg-[#060814]/30 border-slate-850 text-slate-400 hover:text-white hover:border-slate-800'
                   }`}
                 >
-                  <Phone className="w-4 h-4 text-[#00ffcc]" />
+                  <Phone className={`w-4 h-4 ${curr.text}`} />
                   Phone Carrier Look
                 </button>
 
@@ -1401,11 +1524,11 @@ export default function App() {
                   onClick={() => setNetworkSubTab('dns')}
                   className={`flex-1 lg:flex-initial text-left text-xs uppercase tracking-wider font-semibold py-3 px-4 rounded-xl border transition-all flex items-center gap-3 cursor-pointer ${
                     networkSubTab === 'dns'
-                      ? 'bg-cyan-500/10 border-cyan-500 text-[#00d2ff] shadow-md'
+                      ? `${curr.accentBg} ${curr.accentBorder} ${curr.text} shadow-md`
                       : 'bg-[#060814]/30 border-slate-850 text-slate-400 hover:text-white hover:border-slate-800'
                   }`}
                 >
-                  <Globe className="w-4 h-4 text-blue-400" />
+                  <Globe className={`w-4 h-4 ${curr.text}`} />
                   DNS Resolver
                 </button>
               </div>
@@ -1431,12 +1554,12 @@ export default function App() {
                         placeholder="e.g. 8.8.8.8..."
                         value={ipInput}
                         onChange={(e) => setIpInput(e.target.value)}
-                        className="flex-1 bg-slate-900 border border-slate-800 focus:outline-none focus:border-cyan-500 py-3 px-4 rounded-xl text-xs text-slate-200 font-mono"
+                        className={`flex-1 bg-slate-900 border border-slate-800 ${curr.borderFocus} focus:outline-none py-3 px-4 rounded-xl text-xs text-slate-200 font-mono`}
                       />
                       <button
                         onClick={handleIpLookup}
                         disabled={ipLoading}
-                        className="px-5 py-3 rounded-xl bg-cyan-500 text-black hover:bg-[#00ffcc] text-xs uppercase tracking-wider font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                        className={`px-5 py-3 rounded-xl ${curr.bg} text-black ${curr.hoverBg} text-xs uppercase tracking-wider font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer`}
                       >
                         {ipLoading ? 'Lookup...' : 'Query'}
                       </button>
@@ -1495,7 +1618,7 @@ export default function App() {
                       <select
                         value={phoneRegion}
                         onChange={(e) => setPhoneRegion(e.target.value)}
-                        className="bg-slate-900 border border-slate-800 text-xs text-slate-300 font-mono py-3 px-4 rounded-xl focus:outline-none focus:border-cyan-500 shrink-0"
+                        className={`bg-slate-900 border border-slate-800 text-xs text-slate-300 font-mono py-3 px-4 rounded-xl focus:outline-none ${curr.borderFocus} shrink-0`}
                       >
                         <option value="ID">Indonesia (+62)</option>
                         <option value="US">USA (+1)</option>
@@ -1508,13 +1631,13 @@ export default function App() {
                         placeholder="e.g. 08123456789..."
                         value={phoneInput}
                         onChange={(e) => setPhoneInput(e.target.value)}
-                        className="flex-1 bg-slate-900 border border-slate-800 focus:outline-none focus:border-cyan-500 py-3 px-4 rounded-xl text-xs text-slate-200 font-mono"
+                        className={`flex-1 bg-slate-900 border border-slate-800 focus:outline-none ${curr.borderFocus} py-3 px-4 rounded-xl text-xs text-slate-200 font-mono`}
                       />
 
                       <button
                         onClick={handlePhoneLookup}
                         disabled={phoneLoading}
-                        className="px-5 py-3 rounded-xl bg-cyan-500 text-black hover:bg-[#00ffcc] text-xs uppercase tracking-wider font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                        className={`px-5 py-3 rounded-xl ${curr.bg} text-black ${curr.hoverBg} text-xs uppercase tracking-wider font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0`}
                       >
                         {phoneLoading ? 'Analyzing...' : 'Analyze'}
                       </button>
@@ -1575,12 +1698,12 @@ export default function App() {
                         placeholder="e.g. google.com..."
                         value={dnsInput}
                         onChange={(e) => setDnsInput(e.target.value)}
-                        className="flex-1 bg-slate-900 border border-slate-800 focus:outline-none focus:border-cyan-500 py-3 px-4 rounded-xl text-xs text-slate-200 font-mono"
+                        className={`flex-1 bg-slate-900 border border-slate-800 focus:outline-none ${curr.borderFocus} py-3 px-4 rounded-xl text-xs text-slate-200 font-mono`}
                       />
                       <button
                         onClick={handleDnsResolve}
                         disabled={dnsLoading}
-                        className="px-5 py-3 rounded-xl bg-cyan-500 text-black hover:bg-[#00ffcc] text-xs uppercase tracking-wider font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                        className={`px-5 py-3 rounded-xl ${curr.bg} text-black ${curr.hoverBg} text-xs uppercase tracking-wider font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer`}
                       >
                         {dnsLoading ? 'Resolving...' : 'Resolve'}
                       </button>
@@ -1629,6 +1752,10 @@ export default function App() {
                 onDelete={handleDeleteHistory}
                 onRename={handleRenameHistory}
                 onPreviewClick={setActivePreviewItem}
+                onConvertClick={(item) => {
+                  setSelectedOpsItem(item);
+                  setIsOpsOpen(true);
+                }}
                 addToast={addToast}
               />
             </div>
@@ -1663,6 +1790,26 @@ export default function App() {
           onClose={() => setActivePreviewItem(null)}
         />
       )}
+
+      {/* Cyberpunk Account Console and Plan Upgrade Portal */}
+      <UserProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        accentColor={accentColor}
+        addToast={addToast}
+      />
+
+      {/* Media Processing Operations Tool (MP3 Extract, GIF Converter, Compressor, Subtitles) */}
+      <MediaOperationsModal
+        isOpen={isOpsOpen}
+        onClose={() => {
+          setIsOpsOpen(false);
+          setSelectedOpsItem(null);
+        }}
+        mediaItem={selectedOpsItem}
+        accentColor={accentColor}
+        addToast={addToast}
+      />
 
     </div>
   );

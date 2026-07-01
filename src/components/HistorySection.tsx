@@ -11,7 +11,9 @@ import {
   Calendar,
   Layers,
   ChevronDown,
-  Info
+  Info,
+  Sliders,
+  Sparkles
 } from 'lucide-react';
 import { DownloadItem } from '../types';
 
@@ -20,6 +22,7 @@ interface HistorySectionProps {
   onDelete: (id: string) => void;
   onRename: (id: string, newTitle: string) => void;
   onPreviewClick: (item: DownloadItem) => void;
+  onConvertClick: (item: DownloadItem) => void;
   addToast: (text: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -28,6 +31,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
   onDelete,
   onRename,
   onPreviewClick,
+  onConvertClick,
   addToast
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -218,6 +222,15 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                     >
                       <Eye className="w-3 h-3 text-cyan-400" />
                       Preview
+                    </button>
+
+                    <button
+                      onClick={() => onConvertClick(item)}
+                      className="flex items-center gap-1 text-[10px] px-2.5 py-1.5 rounded-lg bg-slate-900 text-slate-300 border border-slate-800 hover:text-white hover:border-slate-700 transition-all cursor-pointer"
+                      title="Convert & Compress Media"
+                    >
+                      <Sliders className="w-3 h-3 text-purple-400" />
+                      Convert & Compress
                     </button>
                     
                     <button
