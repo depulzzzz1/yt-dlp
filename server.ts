@@ -43,7 +43,12 @@ async function getActiveCobaltInstances(): Promise<string[]> {
   ];
 
   try {
-    const res = await fetch("https://instances.cobalt.best/api/v1/instances");
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch("https://instances.cobalt.best/api/v1/instances", {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -381,191 +386,207 @@ apiRouter.post('/phone-lookup', (req, res) => {
 
 // 14. Server-Side Media Downloader / Extractor Engine (Cobalt Proxy with yt-dlp simulation fallback)
 const downloadHandler = async (req: express.Request, res: express.Response) => {
-  const url = (req.body.url || req.query.url || '') as string;
-  const videoQuality = (req.body.videoQuality || req.query.videoQuality || '') as string;
-  const isAudioOnly = req.body.isAudioOnly !== undefined ? !!req.body.isAudioOnly : (req.query.isAudioOnly === 'true');
+  try {
+    const url = (req.body.url || req.query.url || '') as string;
+    const videoQuality = (req.body.videoQuality || req.query.videoQuality || '') as string;
+    const isAudioOnly = req.body.isAudioOnly !== undefined ? !!req.body.isAudioOnly : (req.query.isAudioOnly === 'true');
 
-  if (!url) {
-    db.logs.create('error', `API Download request: URL parameter is empty.`);
-    return res.status(400).json({ error: 'Missing target URL parameter.' });
-  }
+    if (!url) {
+      db.logs.create('error', `API Download request: URL parameter is empty.`);
+      return res.status(400).json({ error: 'Missing target URL parameter.' });
+    }
 
-  const startTime = Date.now();
-  db.logs.create('info', `Dispatched pipeline request: mode=${isAudioOnly ? 'Audio' : 'Video' + (videoQuality || '720p')} target=${url}`);
+    const startTime = Date.now();
+    db.logs.create('info', `Dispatched pipeline request: mode=${isAudioOnly ? 'Audio' : 'Video' + (videoQuality || '720p')} target=${url}`);
 
-  const u = url.toLowerCase();
+    const u = url.toLowerCase();
 
-  // Determine platform name
-  let platform = "Universal";
-  if (u.includes("tiktok.com")) platform = "TikTok";
-  else if (u.includes("instagram.com")) platform = "Instagram";
-  else if (u.includes("facebook.com") || u.includes("fb.watch")) platform = "Facebook";
-  else if (u.includes("x.com") || u.includes("twitter.com")) platform = "Twitter/X";
-  else if (u.includes("youtube.com") || u.includes("youtu.be")) platform = "YouTube";
-  else if (u.includes("pinterest.com")) platform = "Pinterest";
-  else if (u.includes("capcut.com")) platform = "CapCut";
-  else if (u.includes("reddit.com")) platform = "Reddit";
-  else if (u.includes("likee.video") || u.includes("likee.com")) platform = "Likee";
-  else if (u.includes("kwai.com")) platform = "Kwai";
+    // Determine platform name
+    let platform = "Universal";
+    if (u.includes("tiktok.com")) platform = "TikTok";
+    else if (u.includes("instagram.com")) platform = "Instagram";
+    else if (u.includes("facebook.com") || u.includes("fb.watch")) platform = "Facebook";
+    else if (u.includes("x.com") || u.includes("twitter.com")) platform = "Twitter/X";
+    else if (u.includes("youtube.com") || u.includes("youtu.be")) platform = "YouTube";
+    else if (u.includes("pinterest.com")) platform = "Pinterest";
+    else if (u.includes("capcut.com")) platform = "CapCut";
+    else if (u.includes("reddit.com")) platform = "Reddit";
+    else if (u.includes("likee.video") || u.includes("likee.com")) platform = "Likee";
+    else if (u.includes("kwai.com")) platform = "Kwai";
 
-  // Get live instances dynamically!
-  const cobaltInstances = await getActiveCobaltInstances();
-  db.logs.create('info', `Loaded ${cobaltInstances.length} active/online Cobalt node mirrors for automated round-robin rotation.`);
+    // Get live instances dynamically!
+    const cobaltInstances = await getActiveCobaltInstances();
+    db.logs.create('info', `Loaded ${cobaltInstances.length} active/online Cobalt node mirrors for automated round-robin rotation.`);
 
-  let extractedUrl = "";
-  let extractedFilename = "";
+    let extractedUrl = "";
+    let extractedFilename = "";
 
-  // 1. Loop through Cobalt mirrors
-  for (const instance of cobaltInstances) {
-    try {
-      db.logs.create('info', `Attempting extraction via node [${instance}]...`);
-      
-      // Strategy A: Cobalt v10 format (POST /)
-      const payloadV10 = {
-        url: url,
-        videoQuality: videoQuality || "720",
-        downloadMode: isAudioOnly ? "audio" : "video",
-        audioFormat: "mp3",
-        filenamePattern: "classic"
-      };
-
-      let response = await fetch(instance, {
-        method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        },
-        body: JSON.stringify(payloadV10)
-      });
-
-      // Strategy B: Cobalt v7-v9 format fallback (POST /api/json) on the same instance if / returned 404 or failed
-      if (!response.ok || response.status === 404) {
-        const payloadV9 = {
+    // 1. Loop through Cobalt mirrors
+    for (const instance of cobaltInstances) {
+      try {
+        db.logs.create('info', `Attempting extraction via node [${instance}]...`);
+        
+        // Strategy A: Cobalt v10 format (POST /)
+        const payloadV10 = {
           url: url,
           videoQuality: videoQuality || "720",
-          isAudioOnly: !!isAudioOnly,
+          downloadMode: isAudioOnly ? "audio" : "video",
+          audioFormat: "mp3",
           filenamePattern: "classic"
         };
 
-        response = await fetch(`${instance}/api/json`, {
+        const controllerA = new AbortController();
+        const timeoutA = setTimeout(() => controllerA.abort(), 6000);
+        let response = await fetch(instance, {
           method: "POST",
           headers: {
             "Accept": "application/json",
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           },
-          body: JSON.stringify(payloadV9)
+          body: JSON.stringify(payloadV10),
+          signal: controllerA.signal
         });
-      }
+        clearTimeout(timeoutA);
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.status !== 'error') {
-          if (data.url) {
-            extractedUrl = data.url;
-            extractedFilename = data.filename || "";
-            db.logs.create('success', `Success extraction from [${instance}]!`);
-            break;
-          } else if (data.picker && Array.isArray(data.picker) && data.picker.length > 0) {
-            extractedUrl = data.picker[0].url || data.picker[0].audio || data.picker[0].video || "";
-            extractedFilename = data.filename || data.picker[0].title || "";
-            db.logs.create('success', `Success picker-type extraction from [${instance}]!`);
-            break;
+        // Strategy B: Cobalt v7-v9 format fallback (POST /api/json) on the same instance if / returned 404 or failed
+        if (!response.ok || response.status === 404) {
+          const payloadV9 = {
+            url: url,
+            videoQuality: videoQuality || "720",
+            isAudioOnly: !!isAudioOnly,
+            filenamePattern: "classic"
+          };
+
+          const controllerB = new AbortController();
+          const timeoutB = setTimeout(() => controllerB.abort(), 6000);
+          response = await fetch(`${instance}/api/json`, {
+            method: "POST",
+            headers: {
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            body: JSON.stringify(payloadV9),
+            signal: controllerB.signal
+          });
+          clearTimeout(timeoutB);
+        }
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.status !== 'error') {
+            if (data.url) {
+              extractedUrl = data.url;
+              extractedFilename = data.filename || "";
+              db.logs.create('success', `Success extraction from [${instance}]!`);
+              break;
+            } else if (data.picker && Array.isArray(data.picker) && data.picker.length > 0) {
+              extractedUrl = data.picker[0].url || data.picker[0].audio || data.picker[0].video || "";
+              extractedFilename = data.filename || data.picker[0].title || "";
+              db.logs.create('success', `Success picker-type extraction from [${instance}]!`);
+              break;
+            }
+          } else {
+            db.logs.create('warn', `Node [${instance}] returned inner error: ${data?.text || 'unknown'}`);
           }
         } else {
-          db.logs.create('warn', `Node [${instance}] returned inner error: ${data?.text || 'unknown'}`);
+          db.logs.create('warn', `Node [${instance}] HTTP handshakes returned status: ${response.status}`);
         }
-      } else {
-        db.logs.create('warn', `Node [${instance}] HTTP handshakes returned status: ${response.status}`);
+      } catch (err: any) {
+        db.logs.create('warn', `Node [${instance}] connection collapsed: ${err.message}`);
       }
-    } catch (err: any) {
-      db.logs.create('warn', `Node [${instance}] connection collapsed: ${err.message}`);
     }
-  }
 
-  // 2. Tikwm TikTok dedicated fallback if Cobalt failed and target is TikTok
-  if (!extractedUrl && platform === "TikTok") {
-    try {
-      db.logs.create('info', `Engaging dedicated TikTok tikwm extractor fallback...`);
-      const tikwmRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`);
-      if (tikwmRes.ok) {
-        const tikwmData = await tikwmRes.json();
-        if (tikwmData.code === 0 && tikwmData.data) {
-          extractedUrl = isAudioOnly ? (tikwmData.data.music || tikwmData.data.play) : (tikwmData.data.play || tikwmData.data.wmplay);
-          extractedFilename = tikwmData.data.title || `TikTok_Media_${Math.floor(Math.random() * 8999) + 1000}`;
-          db.logs.create('success', `TikTok successfully resolved via Tikwm API fallback!`);
+    // 2. Tikwm TikTok dedicated fallback if Cobalt failed and target is TikTok
+    if (!extractedUrl && platform === "TikTok") {
+      try {
+        db.logs.create('info', `Engaging dedicated TikTok tikwm extractor fallback...`);
+        const tikwmRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`);
+        if (tikwmRes.ok) {
+          const tikwmData = await tikwmRes.json();
+          if (tikwmData.code === 0 && tikwmData.data) {
+            extractedUrl = isAudioOnly ? (tikwmData.data.music || tikwmData.data.play) : (tikwmData.data.play || tikwmData.data.wmplay);
+            extractedFilename = tikwmData.data.title || `TikTok_Media_${Math.floor(Math.random() * 8999) + 1000}`;
+            db.logs.create('success', `TikTok successfully resolved via Tikwm API fallback!`);
+          }
         }
+      } catch (err: any) {
+        db.logs.create('warn', `Tikwm fallback connection collapsed: ${err.message}`);
       }
-    } catch (err: any) {
-      db.logs.create('warn', `Tikwm fallback connection collapsed: ${err.message}`);
     }
-  }
 
-  // If no media is extracted, do NOT return a placeholder/sample media. Return a strict extraction failure instead.
-  if (!extractedUrl) {
-    db.logs.create('error', `Media pipeline failed: All 20+ round-robin Cobalt server nodes returned rate-limits or failed to parse direct links.`);
-    return res.status(502).json({
-      error: "Extraction nodes are currently rate-limited or the media stream is restricted (private/copyrighted). Please retry in a few moments, or check your source URL link."
+    // If no media is extracted, do NOT return a placeholder/sample media. Return a strict extraction failure instead.
+    if (!extractedUrl) {
+      db.logs.create('error', `Media pipeline failed: All 20+ round-robin Cobalt server nodes returned rate-limits or failed to parse direct links.`);
+      return res.status(502).json({
+        error: "Extraction nodes are currently rate-limited or the media stream is restricted (private/copyrighted). Please retry in a few moments, or check your source URL link."
+      });
+    }
+
+    // Finalize data properties
+    const mediaTitle = extractedFilename || `${platform}_Media_${Math.floor(Math.random() * 89990) + 10000}`;
+    const processingTimeMs = Date.now() - startTime;
+    const sizeStr = isAudioOnly ? "4.2 MB" : (videoQuality === "1080" ? "24.8 MB" : "14.2 MB");
+    const randomId = Math.random().toString(36).substring(7);
+    const uploadedCloudUrl = `https://supabase-storage-cdn.ultrapro.io/downloads/${randomId}_${encodeURIComponent(mediaTitle)}.mp4`;
+
+    // Select appropriate high-quality generic thumbnail based on platform
+    let thumbnailUrl = "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150";
+    if (platform === "TikTok") thumbnailUrl = "https://images.unsplash.com/photo-1598128558393-70ff21433be0?w=150";
+    else if (platform === "Instagram") thumbnailUrl = "https://images.unsplash.com/photo-1611262588024-d12430b98920?w=150";
+    else if (platform === "YouTube") thumbnailUrl = "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150";
+    else if (platform === "Twitter/X") thumbnailUrl = "https://images.unsplash.com/photo-1611605698335-8b15d27e03f9?w=150";
+
+    // Save record to DB history logs
+    const newDownload: any = {
+      id: `dl-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      url: url,
+      title: mediaTitle,
+      platform: platform,
+      mode: isAudioOnly ? 'audio' : 'video',
+      quality: isAudioOnly ? '192kbps (MP3)' : `${videoQuality || '720'}p`,
+      status: 'completed',
+      size: sizeStr,
+      duration: isAudioOnly ? '03:15' : '01:30',
+      fps: isAudioOnly ? undefined : 30,
+      codec: isAudioOnly ? 'mp3' : 'h264',
+      audioCodec: 'aac',
+      thumbnailUrl,
+      downloadUrl: extractedUrl,
+      createdAt: new Date().toISOString(),
+      processingTimeMs,
+      downloadSpeed: '12.4 MB/s'
+    };
+
+    db.history.create(newDownload);
+
+    // Track database bandwidth metrics
+    const sizeBytes = isAudioOnly ? 4.2 * 1024 * 1024 : (videoQuality === "1080" ? 24.8 * 1024 * 1024 : 14.2 * 1024 * 1024);
+    db.analytics.incrementBandwidth(sizeBytes);
+
+    db.logs.create('success', `Pipeline extraction completed. File size: ${sizeStr}. Uploaded to Supabase Cloud Storage: ${uploadedCloudUrl}`);
+
+    return res.json({
+      status: 'completed',
+      title: mediaTitle,
+      platform: platform,
+      resolution: isAudioOnly ? 'MP3 Audio' : `${videoQuality || '720'}p`,
+      duration: newDownload.duration,
+      fileSize: sizeStr,
+      downloadSpeed: '14.2 MB/s',
+      processingTime: `${(processingTimeMs / 1000).toFixed(2)}s`,
+      thumbnail: newDownload.thumbnailUrl,
+      downloadUrl: extractedUrl,
+      dbId: newDownload.id
     });
+  } catch (error: any) {
+    console.error("CRITICAL error in downloadHandler:", error);
+    try {
+      db.logs.create('error', `CRITICAL error in downloadHandler: ${error.message}`);
+    } catch (_) {}
+    return res.status(500).json({ error: `Internal server error: ${error.message}` });
   }
-
-  // Finalize data properties
-  const mediaTitle = extractedFilename || `${platform}_Media_${Math.floor(Math.random() * 89990) + 10000}`;
-  const processingTimeMs = Date.now() - startTime;
-  const sizeStr = isAudioOnly ? "4.2 MB" : (videoQuality === "1080" ? "24.8 MB" : "14.2 MB");
-  const randomId = Math.random().toString(36).substring(7);
-  const uploadedCloudUrl = `https://supabase-storage-cdn.ultrapro.io/downloads/${randomId}_${encodeURIComponent(mediaTitle)}.mp4`;
-
-  // Select appropriate high-quality generic thumbnail based on platform
-  let thumbnailUrl = "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150";
-  if (platform === "TikTok") thumbnailUrl = "https://images.unsplash.com/photo-1598128558393-70ff21433be0?w=150";
-  else if (platform === "Instagram") thumbnailUrl = "https://images.unsplash.com/photo-1611262588024-d12430b98920?w=150";
-  else if (platform === "YouTube") thumbnailUrl = "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150";
-  else if (platform === "Twitter/X") thumbnailUrl = "https://images.unsplash.com/photo-1611605698335-8b15d27e03f9?w=150";
-
-  // Save record to DB history logs
-  const newDownload: any = {
-    id: `dl-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    url: url,
-    title: mediaTitle,
-    platform: platform,
-    mode: isAudioOnly ? 'audio' : 'video',
-    quality: isAudioOnly ? '192kbps (MP3)' : `${videoQuality || '720'}p`,
-    status: 'completed',
-    size: sizeStr,
-    duration: isAudioOnly ? '03:15' : '01:30',
-    fps: isAudioOnly ? undefined : 30,
-    codec: isAudioOnly ? 'mp3' : 'h264',
-    audioCodec: 'aac',
-    thumbnailUrl,
-    downloadUrl: extractedUrl,
-    createdAt: new Date().toISOString(),
-    processingTimeMs,
-    downloadSpeed: '12.4 MB/s'
-  };
-
-  db.history.create(newDownload);
-
-  // Track database bandwidth metrics
-  const sizeBytes = isAudioOnly ? 4.2 * 1024 * 1024 : (videoQuality === "1080" ? 24.8 * 1024 * 1024 : 14.2 * 1024 * 1024);
-  db.analytics.incrementBandwidth(sizeBytes);
-
-  db.logs.create('success', `Pipeline extraction completed. File size: ${sizeStr}. Uploaded to Supabase Cloud Storage: ${uploadedCloudUrl}`);
-
-  return res.json({
-    status: 'completed',
-    title: mediaTitle,
-    platform: platform,
-    resolution: isAudioOnly ? 'MP3 Audio' : `${videoQuality || '720'}p`,
-    duration: newDownload.duration,
-    fileSize: sizeStr,
-    downloadSpeed: '14.2 MB/s',
-    processingTime: `${(processingTimeMs / 1000).toFixed(2)}s`,
-    thumbnail: newDownload.thumbnailUrl,
-    downloadUrl: extractedUrl,
-    dbId: newDownload.id
-  });
 };
 
 apiRouter.post(['/download', '/extract', '/cobalt', '/media'], downloadHandler);
