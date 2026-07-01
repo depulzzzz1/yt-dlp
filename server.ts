@@ -379,8 +379,10 @@ app.post('/api/phone-lookup', (req, res) => {
 });
 
 // 14. Server-Side Media Downloader / Extractor Engine (Cobalt Proxy with yt-dlp simulation fallback)
-app.post('/api/download', async (req, res) => {
-  const { url, videoQuality, isAudioOnly } = req.body;
+const downloadHandler = async (req: express.Request, res: express.Response) => {
+  const url = (req.body.url || req.query.url || '') as string;
+  const videoQuality = (req.body.videoQuality || req.query.videoQuality || '') as string;
+  const isAudioOnly = req.body.isAudioOnly !== undefined ? !!req.body.isAudioOnly : (req.query.isAudioOnly === 'true');
 
   if (!url) {
     db.logs.create('error', `API Download request: URL parameter is empty.`);
@@ -563,7 +565,10 @@ app.post('/api/download', async (req, res) => {
     downloadUrl: extractedUrl,
     dbId: newDownload.id
   });
-});
+};
+
+app.post(['/api/download', '/api/extract', '/api/cobalt', '/api/media'], downloadHandler);
+app.get(['/api/download', '/api/extract', '/api/cobalt', '/api/media'], downloadHandler);
 
 // 15. Server-side Proxy download stream generator (CRITICAL FEATURE FOR REAL PHYSICAL DOWNLOADING)
 // This endpoint receives a direct stream URL and streams it as a binary file to the browser
@@ -646,7 +651,7 @@ app.get('/api/proxy-download', async (req, res) => {
 // --- VITE MIDDLEWARE OR STATIC APP SERVING ---
 
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     db.logs.create('info', `Vite development pipeline binding...`);
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -662,10 +667,14 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    db.logs.create('success', `UltraProMax server cluster fully online. Listening on port ${PORT}`);
-    console.log(`Server listening on port ${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      db.logs.create('success', `UltraProMax server cluster fully online. Listening on port ${PORT}`);
+      console.log(`Server listening on port ${PORT}`);
+    });
+  }
 }
 
 startServer();
+
+export default app;
